@@ -1,0 +1,58 @@
+## INTLY-4672
+
+## Installation
+
+- Clone the Enmasse repo: https://github.com/EnMasseProject/enmasse
+- `oc login` to your OS4 cluster
+- From the projects root directory, run:
+
+  make clean && make templates
+
+- Apply the CRD's/resources
+```
+cd templates/build/enmasse-latest && oc new-project enmasse-infra || oc project enmasse-infra && oc apply -f install/bundles/enmasse && oc apply -f install/components/example-plans && oc apply -f install/components/example-roles && oc apply -f install/components/example-authservices/standard-authservice.yaml
+```
+- Wait a moment until all pods have been created and are running, then scale down the operator pod:
+
+  oc scale deployment enmasse-operator --replicas=0
+
+- `export NAMESPACE=enmasse-infra && export ENABLE_MONITORING=true && export TEMPLATE_DIR=<path_to_templates>`
+
+- From the `enmasse/controller-manager` directory:
+
+  make build && make run
+
+## Creating Docker Image
+
+- From the projects root directory, run:
+
+  make -C controller-manager build docker_build
+
+- Tag and push the newly created images:
+```
+docker tag enmasse-controller-manager:0.31-SNAPSHOT quay.io/robrien/controller-manager:latest && docker push quay.io/robrien/controller-manager:latest
+```
+
+- Make the above image public with `quay.io`
+
+- Run the operator locally, and update the deployment to point to the above image
+
+## Monitoring Setup
+
+THe below steps can be used to manually install the required monitoring resources, if so required.
+
+- Create the monitoring resources:
+
+  oc apply -f enmasse/templates/build/enmasse-latest/install/bundles/monitoring
+
+- Label the `enmasse-infra` namespace:
+
+  oc label namespace enmasse-infra monitoring-key=middleware
+
+## GO setup
+
+- From the projects root directory, run:
+
+  export GO111MODULE="on"
+  go mod vendor
+  go mod tidy

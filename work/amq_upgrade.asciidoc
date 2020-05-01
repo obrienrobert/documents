@@ -1,0 +1,60 @@
+## INTLY-5111
+
+## Testing AMQ upgrade
+
+Tests upgrading from RHMI `v2.1.0` -> `v2.2.0` in which the AMQ `v1.4.1` is installed via OLM, along with AMQ's monitoring resources.
+
+### Install RHMI v2.1.0 via OLM
+
+- `oc login` to your OS4 cluster
+- login to `quay.io`
+- Push the `integreatly-operator 2.1.0` CSV to your own quay.io application registry. From master, run:
+`QUAY_USERNAME=<your user> QUAY_PASSWORD=<your password> REPO=<your quay name> make push/csv` (requires operator courier)
+- Within `quay.io`, make the application public (applications -> settings -> make public)
+- Create an operator source on the cluster:
+```
+apiVersion: operators.coreos.com/v1
+kind: OperatorSource
+metadata:
+  name: rhmi
+  namespace: openshift-marketplace
+spec:
+  authorizationToken: {}
+  displayName: RHMI Operators
+  endpoint: 'https://quay.io/cnr'
+  publisher: Integreatly Publisher
+  registryNamespace: <The REPO you used above>
+  type: appregistry
+```
+- Run: `make cluster/prepare/project && make cluster/prepare/smtp && make cluster/prepare/dms && make cluster/prepare/pagerduty`
+
+- Manually create an automatic subscription for RHMI on  the cluster through OLM, in the `redhat-rhmi-operator` namespace
+- Wait for `RHMI` to install
+
+### Upgrading to this branch
+- Checkout this branch
+- `make release/prepare SEMVER=2.2.0`
+- Within the newly created CSV file, update the `image` value to point to your `quay.io` repositiory. Also update the `ORG` in the makefile to point to your `ORG`
+- `make image/build`
+- Push the new CSV to quay: `QUAY_USERNAME=<your user> QUAY_PASSWORD=<your password> REPO=<your quay name> make push/csv`
+- Push the new image to quay: `make image/push`
+- Make the `integreatly-operator` repository public in quay, if it isn't already (repositories -> settings -> make public)
+- Delete the `rhmi-x` pod in the `openshift-marketplace` namespace
+- In the `redhat-rhmi-operator` namespace, navigate to Installed-Operators -> RHMI -> subscription and approve the updgrade
+- Ensure the upgrade was successful, and the following alerts exist in Prometheus and none of the alerts are in a triggered state (you may have to wait a few minutes for the upgrade to take affect):
+
+```
+/etc/prometheus/rules/prometheus-application-monitoring-rulefiles-0/redhat-rhmi-amq-online-enmasse.yaml
+ComponentHealth
+AddressHealth
+AddressSpaceHealth
+AuthenticationService
+RouterMeshConnectivityHealth
+RouterMeshUndeliveredHealth
+
+/etc/prometheus/rules/prometheus-application-monitoring-rulefiles-0/redhat-rhmi-amq-online-kube-metrics.yaml
+PendingPods
+RestartingPods
+RestartingPods
+TerminatingPods
+```
